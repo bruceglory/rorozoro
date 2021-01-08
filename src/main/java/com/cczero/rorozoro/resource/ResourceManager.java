@@ -1,5 +1,9 @@
 package com.cczero.rorozoro.resource;
 
+import com.cczero.rorozoro.resource.annotation.Resource;
+import org.reflections.Reflections;
+import org.reflections.scanners.SubTypesScanner;
+import org.reflections.util.ConfigurationBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,7 +17,11 @@ import java.io.*;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
+/**
+ *
+ */
 public class ResourceManager {
     public static final TypeDescriptor sourceType = TypeDescriptor.valueOf(String.class);
 
@@ -22,8 +30,40 @@ public class ResourceManager {
     @Autowired
     private ConversionService conversionService;
 
+    public static void main(String[] args) {
+        ResourceManager resourceManager = new ResourceManager();
+        resourceManager.loadAllResource();
+    }
+    public void loadAllResource() {
+        //加载所有注解为Resource的类
+        Reflections reflections = new Reflections(new ConfigurationBuilder().forPackages("com.cczero.rorozoro")
+                .addScanners(new SubTypesScanner()));
+        Set<Class<?>> resourceClass = reflections.getTypesAnnotatedWith(Resource.class);
+        for (Class<?> aClass : resourceClass) {
+            loadResource(aClass, "classpath:mapresource.csv");
+        }
+    }
+
+    public <E> void loadResource(Class<E> clz, String resourceName) {
+        ResourceStorage<E> objectResourceStorage = new ResourceStorage<>();
+        for (E e : readResourceFile(clz, resourceName)) {
+            for (Field declaredField : e.getClass().getDeclaredFields()) {
+                try {
+                    Object id = declaredField.get(e);
+                    if (id instanceof Integer) {
+                        objectResourceStorage.put((Integer)id, e);
+                    }
+                } catch (IllegalAccessException illegalAccessException) {
+                    logger.error("", e);
+                }
+            }
+
+        }
+    }
+
     public <E> List<E> readResourceFile(Class<E> clz, String resourceName) {
         try {
+            List<E> result = new ArrayList<>();
             File file = ResourceUtils.getFile(resourceName);
             InputStreamReader isr = new InputStreamReader(new FileInputStream(file));
             BufferedReader br = new BufferedReader(isr);
@@ -42,10 +82,10 @@ public class ResourceManager {
             }
 
             if (headerContext == null) {
-                return null;
+                logger.error("表格格式有问题");
+                return result;
             }
             //取第一行初始化headers
-            List<E> result = new ArrayList<>();
             String[] headerName = headerContext.split(",");
 
             for (String objectValue : contents) {
@@ -72,7 +112,7 @@ public class ResourceManager {
             }
             return result;
         } catch (FileNotFoundException e) {
-            logger.error("not foundException,{}", resourceName);
+            logger.error("not found resource file,file name:{}", resourceName);
         } catch (IOException exception) {
             exception.printStackTrace();
         }
@@ -92,5 +132,4 @@ public class ResourceManager {
         }
         return null;
     }
-
 }
